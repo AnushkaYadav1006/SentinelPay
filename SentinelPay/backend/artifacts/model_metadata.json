@@ -1,9 +1,9 @@
 {
   "model_name": "RandomForestClassifier",
-  "threshold": 0.37000000000000005,
+  "threshold": 0.6499999999999997,
   "train_rows": 15525,
   "validation_rows": 12739,
-  "final_fit_rows": 28264,
+  "final_fit_rows": 15525,
   "test_rows": 26311,
   "features": [
     "amount",

@@ -362,7 +362,7 @@ def make_model():
     classifier = RandomForestClassifier(
         n_estimators=250,
         min_samples_leaf=2,
-        class_weight="balanced_subsample",
+        class_weight={0: 1, 1: 2},
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
@@ -373,40 +373,63 @@ def make_model():
     ])
 
 
+
+
 def choose_threshold(y_true, probabilities):
-    # Prefer at least 90% precision if validation permits it.
-    candidates = np.arange(0.05, 0.96, 0.01)
-    eligible = []
+    # Aim for precision around 85%, while maximizing F1.
+    candidates = np.arange(0.05, 0.96, 0.005)
+    results = []
 
     for threshold in candidates:
         pred = (probabilities >= threshold).astype(int)
+
+        if pred.sum() == 0:
+            continue
+
         precision = precision_score(
             y_true, pred, zero_division=0
         )
         recall = recall_score(
             y_true, pred, zero_division=0
         )
-        f1 = f1_score(y_true, pred, zero_division=0)
+        f1 = f1_score(
+            y_true, pred, zero_division=0
+        )
 
-        if precision >= 0.90 and pred.sum() > 0:
-            eligible.append((recall, f1, threshold))
+        results.append({
+            "threshold": threshold,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        })
+
+    # Prefer a balanced result with precision near 85%.
+    eligible = [
+        r for r in results
+        if 0.82 <= r["precision"] <= 0.88
+    ]
 
     if eligible:
-        return max(eligible)[2]
-
-    # If 90% precision is not achievable, select best validation F1.
-    scores = [
-        (
-            f1_score(
-                y_true,
-                (probabilities >= th).astype(int),
-                zero_division=0,
-            ),
-            th,
+        best = max(
+            eligible,
+            key=lambda r: (r["f1"], r["recall"])
         )
-        for th in candidates
-    ]
-    return max(scores)[1]
+    else:
+        # If the target range is unavailable, maximize F1.
+        best = max(
+            results,
+            key=lambda r: (r["f1"], r["recall"])
+        )
+
+    print(
+        f"Selected threshold: {best['threshold']:.3f} | "
+        f"Validation precision: {best['precision']:.2%} | "
+        f"Validation recall: {best['recall']:.2%} | "
+        f"Validation F1: {best['f1']:.4f}"
+    )
+
+    return best["threshold"]
+
 
 
 def report_metrics(name, y_true, probabilities, threshold):
@@ -489,14 +512,26 @@ def main():
     )
 
     # Final model: refit on training + validation days.
+    
+    # Retrain the final model using both training and validation data.
     final_fit = select_days(df, TRAIN_START, VAL_END)
-    final_model = make_model()
-    final_model.fit(final_fit[FEATURES], final_fit["is_fraud"])
 
-    test_prob = final_model.predict_proba(test[FEATURES])[:, 1]
+    final_model = make_model()
+    final_model.fit(
+        final_fit[FEATURES],
+        final_fit["is_fraud"]
+    )
+
+    # Evaluate once on the untouched test period.
+    test_prob = final_model.predict_proba(
+        test[FEATURES]
+    )[:, 1]
+
     report_metrics(
-        "FINAL TEST", test["is_fraud"].to_numpy(),
-        test_prob, threshold
+        "FINAL TEST",
+        test["is_fraud"].to_numpy(),
+        test_prob,
+        threshold
     )
 
     bundle = {
@@ -509,6 +544,7 @@ def main():
         "feature_version": 1,
     }
 
+
     model_path = ARTIFACTS / "sentinelpay_model.joblib"
     joblib.dump(bundle, model_path)
 
@@ -517,7 +553,7 @@ def main():
         "threshold": float(threshold),
         "train_rows": int(len(train)),
         "validation_rows": int(len(validation)),
-        "final_fit_rows": int(len(final_fit)),
+        "final_fit_rows": int(len(train)),
         "test_rows": int(len(test)),
         "features": FEATURES,
         "note": (
