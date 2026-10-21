@@ -1,0 +1,16 @@
+{
+  "test_rows": 26317,
+  "fraud_prevalence": 0.08978986966599536,
+  "threshold": 0.5,
+  "average_precision_pr_auc": 0.6666664683901805,
+  "roc_auc": 0.9075623980381922,
+  "precision": 0.49809264305177114,
+  "recall": 0.7735928903935675,
+  "f1": 0.6060003315100282,
+  "confusion_matrix_tn_fp_fn_tp": [
+    22112,
+    1842,
+    535,
+    1828
+  ]
+}
